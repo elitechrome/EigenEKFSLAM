@@ -16,7 +16,7 @@ public:
 };
 class CLC{
 public:
-    CLC();
+    CLC(double, double, double, double);
     
 private:
     Point2f GetIntersectPoint(const Point2f &p1, const Point2f &p2, const Point2f &p3, const Point2f &p4);
@@ -42,4 +42,5 @@ private:
     Point2d w0, w1;
     Point2d u0, u1, u2, u3;
     Point2d wd0, wd1, wm;
+    double fx, fy, cx, cy;
 };
