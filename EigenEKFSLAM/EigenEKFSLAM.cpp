@@ -6,11 +6,10 @@
 //  Copyright © 2016 jaemin. All rights reserved.
 //
 #include "EigenEKFSLAM.h"
-EigenEKFSLAM::EigenEKFSLAM(Eigen::Vector3d _stateT, Eigen::Quaterniond _stateR):state(7), stateCovariance(7,7)
+EigenEKFSLAM::EigenEKFSLAM(Eigen::Vector3d _stateT, Eigen::Quaterniond _stateR):state(7), stateCovariance(7,7), R(7,7)
 {
-    
-    Eigen::VectorXd state;
-    Eigen::MatrixXd stateCovariance;
+    state << 0, 0, 0, 1, 0, 0, 0;
+    stateCovariance.setIdentity();
     
     Eigen::Vector3d stateVehicleT;
     Eigen::Quaterniond stateVehicleR;
@@ -21,6 +20,15 @@ EigenEKFSLAM::EigenEKFSLAM(Eigen::Vector3d _stateT, Eigen::Quaterniond _stateR):
     
     Eigen::VectorXd apriori_mean;
     Eigen::MatrixXd apriori_covariance;
+    R <<
+    0.5, 0, 0, 0, 0, 0, 0,
+    0, 0.5, 0, 0, 0, 0, 0,
+    0, 0, 0.5, 0, 0, 0, 0,
+    0, 0, 0, 0.5, 0, 0, 0,
+    0, 0, 0, 0, 0.5, 0, 0,
+    0, 0, 0, 0, 0, 0.5, 0,
+    0, 0, 0, 0, 0, 0, 0.5;
+    
 }
 void EigenEKFSLAM::aprioriEstimate(double dt, ControlVector& c)
 {
@@ -91,19 +99,24 @@ void EigenEKFSLAM::aprioriEstimate(double dt, ControlVector& c)
 }
 void EigenEKFSLAM::measurementEstimate(std::vector<MeasurementVector> &m)
 {
-    Eigen::MatrixXd J_h_x(stateCovariance.rows()-state.rows(),stateCovariance.cols());
+    bool noUpdate = true;
+    Eigen::MatrixXd J_h_x(stateCovariance.rows()-7,stateCovariance.cols());
     J_h_x.setZero();
-    Eigen::VectorXd y_k(state.size());
+    Eigen::VectorXd y_k(state.size()-7);
     Eigen::MatrixXd J_hi_xv(7, 7);
     Eigen::MatrixXd J_hi_yi(7, 7);
     double x0 = state[0], y0 = state[1], z0 = state[2], qw0 = state[3], qx0 = state[4], qy0 = state[5], qz0 = state[6];
 
     //for each observed landmark
     for (int i = 0; i < m.size(); i++){
-        int s = lround(m[i][7]);
-        if (s > m.size()) {
+        long s = lround(m[i][7]);
+        long numLandmark = (state.size()-7)/7;
+        if (s >= numLandmark) {
             addLandmark(m[i]);
             continue;
+        }
+        else{
+            noUpdate = false;
         }
         //landmakr absolute 3D point
         double xi = m[s][0], yi = m[s][1], zi = m[s][2], qwi = m[s][3], qxi = m[s][4], qyi = m[s][5], qzi = m[s][6];
@@ -129,21 +142,32 @@ void EigenEKFSLAM::measurementEstimate(std::vector<MeasurementVector> &m)
         0, 0, 0,-qy0,-qz0,qw0,qx0,
         0, 0, 0,-qz0,qy0,-qx0,qw0;
         
-        Eigen::VectorXd h;
-        h << xi - x0*((2*qw0*qy0 + 2*qx0*qz0)*(2*qwi*qyi + 2*qxi*qzi) + (2*qw0*qz0 - 2*qx0*qy0)*(2*qwi*qzi - 2*qxi*qyi) + (2*pow(qy0,2) + 2*pow(qz0,2) - 1)*(2*pow(qyi,2) + 2*pow(qzi,2) - 1)) + y0*((2*qw0*qz0 + 2*qx0*qy0)*(2*pow(qyi,2) + 2*pow(qzi,2) - 1) - (2*qwi*qzi - 2*qxi*qyi)*(2*pow(qx0,2) + 2*pow(qz0,2) - 1) + (2*qw0*qx0 - 2*qy0*qz0)*(2*qwi*qyi + 2*qxi*qzi)) + z0*((2*qwi*qyi + 2*qxi*qzi)*(2*pow(qx0,2) + 2*pow(qy0,2) - 1) - (2*qw0*qy0 - 2*qx0*qz0)*(2*pow(qyi,2) + 2*pow(qzi,2) - 1) + (2*qw0*qx0 + 2*qy0*qz0)*(2*qwi*qzi - 2*qxi*qyi)), yi + x0*((2*qwi*qzi + 2*qxi*qyi)*(2*pow(qy0,2) + 2*pow(qz0,2) - 1) - (2*qw0*qz0 - 2*qx0*qy0)*(2*pow(qxi,2) + 2*pow(qzi,2) - 1) + (2*qw0*qy0 + 2*qx0*qz0)*(2*qwi*qxi - 2*qyi*qzi)) - y0*((2*qw0*qx0 - 2*qy0*qz0)*(2*qwi*qxi - 2*qyi*qzi) + (2*qw0*qz0 + 2*qx0*qy0)*(2*qwi*qzi + 2*qxi*qyi) + (2*pow(qx0,2) + 2*pow(qz0,2) - 1)*(2*pow(qxi,2) + 2*pow(qzi,2) - 1)) + z0*((2*qw0*qx0 + 2*qy0*qz0)*(2*pow(qxi,2) + 2*pow(qzi,2) - 1) - (2*qwi*qxi - 2*qyi*qzi)*(2*pow(qx0,2) + 2*pow(qy0,2) - 1) + (2*qw0*qy0 - 2*qx0*qz0)*(2*qwi*qzi + 2*qxi*qyi)), zi + x0*((2*qw0*qy0 + 2*qx0*qz0)*(2*pow(qxi,2) + 2*pow(qyi,2) - 1) - (2*qwi*qyi - 2*qxi*qzi)*(2*pow(qy0,2) + 2*pow(qz0,2) - 1) + (2*qw0*qz0 - 2*qx0*qy0)*(2*qwi*qxi + 2*qyi*qzi)) + y0*((2*qwi*qxi + 2*qyi*qzi)*(2*pow(qx0,2) + 2*pow(qz0,2) - 1) - (2*qw0*qx0 - 2*qy0*qz0)*(2*pow(qxi,2) + 2*pow(qyi,2) - 1) + (2*qw0*qz0 + 2*qx0*qy0)*(2*qwi*qyi - 2*qxi*qzi)) - z0*((2*qw0*qx0 + 2*qy0*qz0)*(2*qwi*qxi + 2*qyi*qzi) + (2*qw0*qy0 - 2*qx0*qz0)*(2*qwi*qyi - 2*qxi*qzi) + (2*pow(qx0,2) + 2*pow(qy0,2) - 1)*(2*pow(qxi,2) + 2*pow(qyi,2) - 1)), qw0*qwi + qx0*qxi + qy0*qyi + qz0*qzi, qw0*qxi - qwi*qx0 - qy0*qzi + qyi*qz0, qw0*qyi - qwi*qy0 + qx0*qzi - qxi*qz0, qw0*qzi - qwi*qz0 - qx0*qyi + qxi*qy0;
+        Eigen::VectorXd h(7);
+        h <<
+        xi - x0*((2*qw0*qy0 + 2*qx0*qz0)*(2*qwi*qyi + 2*qxi*qzi) + (2*qw0*qz0 - 2*qx0*qy0)*(2*qwi*qzi - 2*qxi*qyi) + (2*pow(qy0,2) + 2*pow(qz0,2) - 1)*(2*pow(qyi,2) + 2*pow(qzi,2) - 1)) + y0*((2*qw0*qz0 + 2*qx0*qy0)*(2*pow(qyi,2) + 2*pow(qzi,2) - 1) - (2*qwi*qzi - 2*qxi*qyi)*(2*pow(qx0,2) + 2*pow(qz0,2) - 1) + (2*qw0*qx0 - 2*qy0*qz0)*(2*qwi*qyi + 2*qxi*qzi)) + z0*((2*qwi*qyi + 2*qxi*qzi)*(2*pow(qx0,2) + 2*pow(qy0,2) - 1) - (2*qw0*qy0 - 2*qx0*qz0)*(2*pow(qyi,2) + 2*pow(qzi,2) - 1) + (2*qw0*qx0 + 2*qy0*qz0)*(2*qwi*qzi - 2*qxi*qyi)),
+        yi + x0*((2*qwi*qzi + 2*qxi*qyi)*(2*pow(qy0,2) + 2*pow(qz0,2) - 1) - (2*qw0*qz0 - 2*qx0*qy0)*(2*pow(qxi,2) + 2*pow(qzi,2) - 1) + (2*qw0*qy0 + 2*qx0*qz0)*(2*qwi*qxi - 2*qyi*qzi)) - y0*((2*qw0*qx0 - 2*qy0*qz0)*(2*qwi*qxi - 2*qyi*qzi) + (2*qw0*qz0 + 2*qx0*qy0)*(2*qwi*qzi + 2*qxi*qyi) + (2*pow(qx0,2) + 2*pow(qz0,2) - 1)*(2*pow(qxi,2) + 2*pow(qzi,2) - 1)) + z0*((2*qw0*qx0 + 2*qy0*qz0)*(2*pow(qxi,2) + 2*pow(qzi,2) - 1) - (2*qwi*qxi - 2*qyi*qzi)*(2*pow(qx0,2) + 2*pow(qy0,2) - 1) + (2*qw0*qy0 - 2*qx0*qz0)*(2*qwi*qzi + 2*qxi*qyi)),
+        zi + x0*((2*qw0*qy0 + 2*qx0*qz0)*(2*pow(qxi,2) + 2*pow(qyi,2) - 1) - (2*qwi*qyi - 2*qxi*qzi)*(2*pow(qy0,2) + 2*pow(qz0,2) - 1) + (2*qw0*qz0 - 2*qx0*qy0)*(2*qwi*qxi + 2*qyi*qzi)) + y0*((2*qwi*qxi + 2*qyi*qzi)*(2*pow(qx0,2) + 2*pow(qz0,2) - 1) - (2*qw0*qx0 - 2*qy0*qz0)*(2*pow(qxi,2) + 2*pow(qyi,2) - 1) + (2*qw0*qz0 + 2*qx0*qy0)*(2*qwi*qyi - 2*qxi*qzi)) - z0*((2*qw0*qx0 + 2*qy0*qz0)*(2*qwi*qxi + 2*qyi*qzi) + (2*qw0*qy0 - 2*qx0*qz0)*(2*qwi*qyi - 2*qxi*qzi) + (2*pow(qx0,2) + 2*pow(qy0,2) - 1)*(2*pow(qxi,2) + 2*pow(qyi,2) - 1)),
+        qw0*qwi + qx0*qxi + qy0*qyi + qz0*qzi,
+        qw0*qxi - qwi*qx0 - qy0*qzi + qyi*qz0,
+        qw0*qyi - qwi*qy0 + qx0*qzi - qxi*qz0,
+        qw0*qzi - qwi*qz0 - qx0*qyi + qxi*qy0;
 
         y_k.block(7*s, 0, 7, 1) = m[s].block(0, 0, 7, 1) - h;
         J_h_x.block(0, 7*s, 7, 7) = J_hi_xv;
-        J_h_x.block(7*(s+1), 7*s, 7, 7) = J_hi_yi;
+        J_h_x.block(7*s, 7*s+7, 7, 7) = J_hi_yi;
     }
-    
-    innovation = J_h_x * stateCovariance * J_h_x.transpose() /* +R */;
-    kalmanGain = stateCovariance * J_h_x.transpose() * innovation.inverse();
+    if (!noUpdate) {
+
+    Eigen::MatrixXd innovation(J_h_x.rows(), J_h_x.rows());
+    innovation.block(0,0,J_h_x.rows(),J_h_x.rows()) = J_h_x * stateCovariance * J_h_x.transpose() /* +R */;
+    Eigen::MatrixXd kalmanGain(stateCovariance.rows(), J_h_x.rows());
+    kalmanGain.block(0,0,stateCovariance.rows(), J_h_x.rows()) = stateCovariance * J_h_x.transpose() * innovation.inverse();
     
     //compute aposteriori probability
     state = state + kalmanGain*y_k;
     stateCovariance = (Eigen::MatrixXd::Identity(stateCovariance.rows(),stateCovariance.cols())-kalmanGain*J_h_x)*stateCovariance;
-    
+    }
+    else {return;}
 
 }
 
@@ -152,7 +176,7 @@ void EigenEKFSLAM::addLandmark(MeasurementVector _stateFeature)
     double x0 = state[0], y0 = state[1], z0 = state[2], qw0 = state[3], qx0 = state[4], qy0 = state[5], qz0 = state[6];
     //landmakr absolute 3D point
     double xi = _stateFeature[0], yi = _stateFeature[1], zi = _stateFeature[2], qwi = _stateFeature[3], qxi = _stateFeature[4], qyi = _stateFeature[5], qzi = _stateFeature[6];
-    Eigen::VectorXd newLandmark;
+    Eigen::VectorXd newLandmark(7);
     newLandmark << x0 - xi*(2*pow(qy0,2) + 2*pow(qz0,2) - 1) - yi*(2*qw0*qz0 - 2*qx0*qy0) + zi*(2*qw0*qy0 + 2*qx0*qz0),
     y0 - yi*(2*pow(qx0,2) + 2*pow(qz0,2) - 1) + xi*(2*qw0*qz0 + 2*qx0*qy0) - zi*(2*qw0*qx0 - 2*qy0*qz0),
     z0 - zi*(2*pow(qx0,2) + 2*pow(qy0,2) - 1) - xi*(2*qw0*qy0 - 2*qx0*qz0) + yi*(2*qw0*qx0 + 2*qy0*qz0),
@@ -160,11 +184,12 @@ void EigenEKFSLAM::addLandmark(MeasurementVector _stateFeature)
     qw0*qxi + qwi*qx0 + qy0*qzi - qyi*qz0,
     qw0*qyi + qwi*qy0 - qx0*qzi + qxi*qz0,
     qw0*qzi + qwi*qz0 + qx0*qyi - qxi*qy0;
-    Eigen::VectorXd newState;
-    newState << state, newLandmark;
+    long sizeofoldstate = state.size();
+    state.conservativeResize(state.size()+7,1);
+    state.block(sizeofoldstate, 0, 7, 1) = newLandmark;
     
     
-    Eigen::MatrixXd J_yl_xv, J_yl_hl;
+    Eigen::MatrixXd J_yl_xv(7,7), J_yl_hl(7,7);
     J_yl_xv<<
     1, 0, 0, 2*qy0*zi - 2*qz0*yi,            2*qy0*yi + 2*qz0*zi, 2*qx0*yi - 4*qy0*xi + 2*qw0*zi, 2*qx0*zi - 2*qw0*yi - 4*qz0*xi,
     0, 1, 0, 2*qz0*xi - 2*qx0*zi, 2*qy0*xi - 4*qx0*yi - 2*qw0*zi,            2*qx0*xi + 2*qz0*zi, 2*qw0*xi - 4*qz0*yi + 2*qy0*zi,
@@ -182,16 +207,13 @@ void EigenEKFSLAM::addLandmark(MeasurementVector _stateFeature)
                         0,                       0,                       0, qx0,  qw0, -qz0,  qy0,
                         0,                       0,                       0, qy0,  qz0,  qw0, -qx0,
                         0,                       0,                       0, qz0, -qy0,  qx0,  qw0;
-    Eigen::MatrixXd newStateCov(newState.size(), newState.size());
-    newStateCov.block(0,0, state.size(), state.size())= stateCovariance;
-    for(int i = 0; i < state.size(); i++){
+    stateCovariance.conservativeResize(state.size(), state.size());
+    /*for(int i = 0; i < state.size(); i++){
         newStateCov.block(state.size(), i*7, 7, 7) = J_yl_xv*stateCovariance.block(0,i*7,7,7);
         newStateCov.block(i*7, state.size(), 7, 7) = newStateCov.block(state.size(), i*7, 7, 7).transpose();
-    }
-    newStateCov.block(state.size(), state.size(), 7, 7) = J_yl_xv*stateCovariance.block(0,0,7,7)*J_yl_xv.transpose()/* + J_yl_hl*R*J_yl_hl.transpose()*/;
+    }*/
+    stateCovariance.block(sizeofoldstate, sizeofoldstate, 7, 7) = J_yl_xv*stateCovariance.block(0,0,7,7)*J_yl_xv.transpose()/* + J_yl_hl*R*J_yl_hl.transpose()*/;
     
-    state = newState;
-    stateCovariance = newStateCov;
     
 }
 const Eigen::VectorXd EigenEKFSLAM::getState()

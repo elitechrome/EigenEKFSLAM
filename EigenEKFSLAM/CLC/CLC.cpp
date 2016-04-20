@@ -168,6 +168,10 @@ bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q)
     if (rho < 0)
         rho = M_PI * 2 + rho;
     double phi = acos(cos(theta0)*cos(theta1) + sin(theta0)*sin(theta1)*cos(rho));
+    if(std::isnan(phi))
+    {
+        std::cerr << "Crossing Angle is NaN" << std::endl;
+    }
     cout<<"Crossing Angle : "<<phi<<endl;
     d=1;
     Point3d pc(d *cos(theta0)*sin(phi) / sin(phi), -d *cos(theta0)*cos(phi) + cos(theta1) / sin(phi), d *sin(theta0)*sin(theta1)*sin(rho) / sin(phi));

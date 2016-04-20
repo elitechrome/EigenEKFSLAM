@@ -40,7 +40,7 @@ void mouseEvent1(int evt, int x, int y, int flags, void* param){
         
         keypoints1.push_back(cv::Point(x, y));
         printf("사각형의 %d번째 꼭지점의 좌표(%d, %d)\n", i + 1, x, y);
-        cv::imshow("Image1", *src1);
+        cv::imshow("Image", *src1);
         i++;
     }
 }
@@ -51,16 +51,22 @@ int main(int argc, char** argv)
     CLC clc(300,300,512,384);
     std::vector<vector<Point2f> > squares;
     cv::Mat image;
-    
+    argv[1] ="/Users/jaemin/Dropbox/EigenEKFSLAM/EigenEKFSLAM/IMG_2658.JPG";
+    argv[2] ="/Users/jaemin/Dropbox/EigenEKFSLAM/EigenEKFSLAM/IMG_2660.JPG";
+    argv[3] ="/Users/jaemin/Dropbox/EigenEKFSLAM/EigenEKFSLAM/IMG_2664.JPG";
+    argv[4] ="/Users/jaemin/Dropbox/EigenEKFSLAM/EigenEKFSLAM/IMG_2658.JPG";
+    argv[5] =0;
+
     EigenEKFSLAM ekf_clc(Eigen::Vector3d(0, 0, 0), Eigen::Quaternion<double>(1, 0, 0, 0));
     
-    for( int i = 1; argv[i] != 0; i++ )
+    for( int index = 1; argv[index] != 0; index++ )
     {
-        cv::Mat original_image = cv::imread(argv[i], 1);
+        cv::Mat original_image = cv::imread(argv[index], 1);
         if( original_image.empty() ){
-            std::cout << "Couldn't load " << argv[i] << std::endl;
-            continue;
+            std::cout << "Couldn't load " << argv[index] << std::endl;
+            return -1;
         }
+        cv::resize(original_image, original_image, Size(1024, 768));
         //1. EKF Prediction
         double dt = 0.1;
         ControlVector tmpControl;
@@ -76,12 +82,15 @@ int main(int argc, char** argv)
             original_image.copyTo(image);
             cv::namedWindow("Image", CV_WINDOW_AUTOSIZE);
             cv::imshow("Image", image);
-            cv::setMouseCallback("Image", mouseEvent1, &image);
+                cv::setMouseCallback("Image", mouseEvent1, &image);
+
             inputFlag = cv::waitKey();
             if (keypoints1.empty()){
                 std::cout << "error, no points are selected.\n";
+                i=0;
                 continue;
             }
+            
             if (inputFlag == 'd'){
                 continue;
             } else{
@@ -93,9 +102,15 @@ int main(int argc, char** argv)
                 clc.SetOffCenteredQuad(keypoints1);
                 clc.FindProxyQuadrilateral();
                 Vector3d trans; Quaternion<double> q;
-                clc.CalcCLC(trans, q);
-                MeasurementVector tmpLandmark;
-                tmpLandmark << trans , q.vec(), ID_rect;
+                if(!clc.CalcCLC(trans, q))
+                {
+                    std::cerr << "CLC is NaN" << std::endl;
+                    continue;
+                }
+                MeasurementVector tmpLandmark(8);
+                tmpLandmark << 0,0,0,q.w(),q.x(),q.y(),q.z(),ID_rect;
+                tmpLandmark.block(0,0,3,1) = trans;
+                std::cout << tmpLandmark << std::endl;
                 vecLandmarks.push_back(tmpLandmark);
                 clc.Visualization(image);
                 cv::imshow("Image", image);
@@ -103,11 +118,11 @@ int main(int argc, char** argv)
                 inputFlag = cv::waitKey();
             }
         }while(inputFlag != 'f');
-        
+        inputFlag = 0;
         //4. EKF Correction
         ekf_clc.measurementEstimate(vecLandmarks);
         
-        std::cout << "EKF state :" << ekf_clc.getState() << std::endl;
+        std::cout << "EKF state :" << ekf_clc.getState().transpose() << std::endl;
         
     }
     return 0;

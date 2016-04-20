@@ -28,9 +28,7 @@ private:
     /* Intermediate variables used during filter iteration. */
     Eigen::VectorXd aprioriMean;
     Eigen::MatrixXd aprioriCovariance;
-    Eigen::MatrixXd innovation;
-    Eigen::MatrixXd kalmanGain;
-    
+    Eigen::MatrixXd R;
     
 public:
     //Mean prediction with deterministic motion model func
